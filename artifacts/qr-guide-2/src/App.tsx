@@ -49,11 +49,38 @@ type Analysis = {
   source: 'demo' | 'upload' | 'camera';
 };
 
+type RecentScan = {
+  text: string;
+  timestamp: string;
+  score: number;
+  status: ResultStatus;
+  domain: string;
+};
+
 type Detector = {
   detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
 };
 
 const demoText = 'https://www.citylibrary.org/events/spring-reading';
+const recentScansStorageKey = 'qr-guide-2-recent-scans';
+
+function readRecentScans(): RecentScan[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(recentScansStorageKey) ?? '[]');
+    if (!Array.isArray(stored)) return [];
+    return stored.filter((item): item is RecentScan => (
+      item &&
+      typeof item.text === 'string' &&
+      typeof item.timestamp === 'string' &&
+      typeof item.score === 'number' &&
+      typeof item.status === 'string' &&
+      typeof item.domain === 'string'
+    )).slice(0, 5);
+  } catch {
+    return [];
+  }
+}
 
 function makeAnalysis(text: string, source: Analysis['source']): Analysis {
   const trimmed = text.trim();
@@ -242,6 +269,7 @@ function UploadZone({
         <span>Want to see how it works?</span>
         <button className="demo-button" type="button" onClick={onDemo} data-testid="button-try-demo">Try a demo scan</button>
       </div>
+      <p className="security-note"><ShieldCheck aria-hidden="true" /> Analyze the destination before you open it.</p>
       <p className="privacy-note"><LockKeyhole aria-hidden="true" /> Images are checked in your browser and never uploaded.</p>
     </div>
   );
@@ -250,10 +278,13 @@ function UploadZone({
 function Header() {
   return (
     <header className="qr-header qr-shell">
-      <a className="brand-lockup" href="/" data-testid="link-home">
-        <span className="brand-mark"><QrCode aria-hidden="true" /></span>
-        <span className="brand-name">QR Guide <em>2</em></span>
-      </a>
+      <div className="brand-group">
+        <a className="brand-lockup" href="/" data-testid="link-home">
+          <span className="brand-mark"><QrCode aria-hidden="true" /></span>
+          <span className="brand-name">QR Guide <em>2</em></span>
+        </a>
+        <span className="brand-subtitle">Smart QR Safety &amp; Risk Analysis</span>
+      </div>
       <div className="header-note"><ShieldCheck aria-hidden="true" /> Browser-first security analysis</div>
     </header>
   );
@@ -286,16 +317,55 @@ function IntroSection({ onFile, onCamera, onDemo }: { onFile: (file: File) => vo
   );
 }
 
-function ResultView({ analysis, onReset }: { analysis: Analysis; onReset: () => void }) {
+function RecentScans({ scans }: { scans: RecentScan[] }) {
+  if (scans.length === 0) return null;
+  const formatDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return 'Recent scan';
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date);
+  };
+  const riskLabel = (status: ResultStatus) => status === 'safe' ? 'Low risk' : status === 'suspicious' ? 'Moderate risk' : 'High risk';
+
+  return (
+    <section className="recent-card qr-shell" data-testid="card-recent-scans">
+      <div className="recent-heading">
+        <div>
+          <div className="result-kicker">On this device</div>
+          <h2>Recent scans</h2>
+        </div>
+        <span>Last five analyses</span>
+      </div>
+      <div className="recent-list">
+        {scans.map((scan, index) => (
+          <div className="recent-item" key={`${scan.timestamp}-${index}`}>
+            <div className={`recent-status ${scan.status}`} aria-hidden="true" />
+            <div className="recent-main">
+              <strong>{scan.domain === 'Not applicable' ? 'Plain text payload' : scan.domain}</strong>
+              <span>{formatDate(scan.timestamp)} · {riskLabel(scan.status)}</span>
+            </div>
+            <div className={`recent-score ${scan.status}`}>{scan.score}<small>/100</small></div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ResultView({ analysis, recentScans, onReset }: { analysis: Analysis; recentScans: RecentScan[]; onReset: () => void }) {
   const color = analysis.status === 'safe' ? '#10a87e' : analysis.status === 'suspicious' ? '#d39122' : '#d34a51';
   const ringStyle = { background: `conic-gradient(${color} ${analysis.score * 3.6}deg, #e6edf5 0deg)` } as CSSProperties;
   const statusLabel = analysis.status[0].toUpperCase() + analysis.status.slice(1);
   const riskBand = analysis.status === 'safe' ? 'Low' : analysis.status === 'suspicious' ? 'Moderate' : 'High';
   const recommendation = analysis.status === 'safe'
-    ? 'The local checks found few immediate warning signs. Confirm the destination matches your context before continuing.'
+    ? 'Looks reasonable. Still verify the destination before entering sensitive information.'
     : analysis.status === 'suspicious'
-      ? 'Pause and inspect the domain carefully. Do not enter credentials or personal information until you are confident.'
-      : 'Do not open this destination. Close the page and verify the code with the person or organization that shared it.';
+      ? 'Proceed with caution and verify the destination before providing personal information.'
+      : 'High risk indicators detected. Avoid opening the destination unless independently verified.';
 
   return (
     <main className="result-wrap qr-shell reveal">
@@ -318,7 +388,14 @@ function ResultView({ analysis, onReset }: { analysis: Analysis; onReset: () => 
             </div>
           </div>
           <div className="url-block">
-            <div className="detail-label">Decoded content</div>
+             <div className="destination-title">
+               <div>
+                 <div className="card-label">Destination Details</div>
+                 <h3>What the code contains</h3>
+               </div>
+               <QrCode aria-hidden="true" />
+             </div>
+             <div className="detail-label">Decoded content</div>
             <p className="decoded-text" data-testid="text-decoded-content">{analysis.text}</p>
             <div className="detail-grid" aria-label="Destination details">
               <div className="detail-item"><span className="detail-label">Domain</span><strong data-testid="text-domain">{analysis.domain}</strong></div>
@@ -334,7 +411,7 @@ function ResultView({ analysis, onReset }: { analysis: Analysis; onReset: () => 
         </section>
         <div className="result-side">
           <section className="checks-card" data-testid="card-security-checks">
-            <h2>Security checks</h2>
+             <h2>Security Analysis</h2>
             <p>Only signals available in the local analyzer are shown here.</p>
             <div className="check-list">
               {analysis.checks.map((check, index) => (
@@ -346,7 +423,7 @@ function ResultView({ analysis, onReset }: { analysis: Analysis; onReset: () => 
             </div>
           </section>
           <section className="reasons-card" data-testid="card-risk-reasons">
-            <h2>Why this score?</h2>
+             <h2>Why This Score?</h2>
             <p>These are the actual clues used to calculate this result.</p>
             {analysis.reasons.map((reason, index) => (
               <div className="reason" key={`${reason.title}-${index}`} data-testid={`reason-${index}`}>
@@ -354,11 +431,14 @@ function ResultView({ analysis, onReset }: { analysis: Analysis; onReset: () => 
                 <div><strong>{reason.title}</strong><span>{reason.detail}</span></div>
               </div>
             ))}
-            <div className="recommendation"><Info aria-hidden="true" /><span><strong>Security recommendation:</strong> {recommendation}</span></div>
             <div className="assessment-note">QR Guide 2 does not check live reputation, malware databases, or the content of a destination.</div>
           </section>
+           <section className="recommendation-card" data-testid="card-security-recommendation">
+             <div className="recommendation"><Info aria-hidden="true" /><div><h2>Security Recommendation</h2><span>{recommendation}</span></div></div>
+           </section>
         </div>
       </div>
+       <RecentScans scans={recentScans} />
     </main>
   );
 }
@@ -426,11 +506,29 @@ function CameraModal({ onClose, onDecoded }: { onClose: () => void; onDecoded: (
 function Home() {
   const [state, setState] = useState<AppState>('idle');
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [recentScans, setRecentScans] = useState<RecentScan[]>(readRecentScans);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const finishAnalysis = useCallback((text: string, source: Analysis['source']) => {
-    setAnalysis(makeAnalysis(text, source));
+    const nextAnalysis = makeAnalysis(text, source);
+    setAnalysis(nextAnalysis);
+    setRecentScans((current) => {
+      const nextScan: RecentScan = {
+        text: nextAnalysis.text,
+        timestamp: new Date().toISOString(),
+        score: nextAnalysis.score,
+        status: nextAnalysis.status,
+        domain: nextAnalysis.domain,
+      };
+      const next = [nextScan, ...current.filter((scan) => scan.text !== nextScan.text)].slice(0, 5);
+      try {
+        window.localStorage.setItem(recentScansStorageKey, JSON.stringify(next));
+      } catch {
+        // The scan result remains usable even when storage is unavailable.
+      }
+      return next;
+    });
     setState('result');
   }, []);
 
@@ -503,7 +601,7 @@ function Home() {
       <Header />
       {state === 'idle' && <IntroSection onFile={readImage} onCamera={() => setCameraOpen(true)} onDemo={runDemo} />}
       {state === 'loading' && <main className="qr-shell state-card reveal" data-testid="state-loading"><div className="state-icon"><QrCode aria-hidden="true" /></div><h1>Reading your QR code</h1><p>We are taking a closer look. This usually takes just a moment.</p><div className="loading-bars" aria-label="Loading"><span /><span /><span /></div></main>}
-      {state === 'result' && analysis && <ResultView analysis={analysis} onReset={reset} />}
+       {state === 'result' && analysis && <ResultView analysis={analysis} recentScans={recentScans} onReset={reset} />}
       {(state === 'invalid' || state === 'failed') && <main className="qr-shell state-card reveal" data-testid={`state-${state}`}><div className="state-icon"><FileImage aria-hidden="true" /></div><h1>{state === 'invalid' ? 'That image needs a rethink.' : 'No QR code found yet.'}</h1><p>{errorMessage}</p><button className="primary-button" type="button" onClick={reset} data-testid="button-try-another"><RefreshCw aria-hidden="true" /> Try another image</button></main>}
       <footer className="qr-footer qr-shell"><span><strong>QR Guide 2</strong> — a second opinion before you scan.</span><span>Private by design.</span></footer>
       {cameraOpen && <CameraModal onClose={() => setCameraOpen(false)} onDecoded={handleCameraDecoded} />}
