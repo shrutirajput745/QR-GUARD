@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "QR Guide 2"
+description = "A beginner-friendly QR security checker that scans QR code images, extracts their text or URL, and explains a clear safety risk score with demo examples."
+version = "1.0.0"
+id = "artifacts/qr-guide-2"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24377
+
+[services.development]
+run = "pnpm --filter @workspace/qr-guide-2 run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/qr-guide-2", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/qr-guide-2/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24377"
+BASE_PATH = "/"
