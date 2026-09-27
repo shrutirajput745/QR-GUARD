@@ -1,0 +1,104 @@
+Complete and finalize my project “QR Guide 2” as a fully functional college-level web application.
+
+IMPORTANT:
+Do not just redesign the UI. I need a COMPLETE WORKING PROJECT.
+
+1. FUNCTIONALITY
+- QR code scanner using device camera.
+- QR code image upload option.
+- Decode QR codes correctly.
+- Extract the decoded URL/text.
+- If the QR contains a URL, analyze it for basic security risks.
+- Generate a dynamic risk score from 0–100.
+- Show status:
+  Safe / Suspicious / High Risk.
+- Explain exactly why the score was generated.
+- Check indicators such as:
+  HTTPS
+  suspicious domain patterns
+  URL length
+  @ symbol
+  unusual characters
+  suspicious redirects/patterns where technically possible.
+- Never use a hardcoded demo score.
+- Results must change according to the actual scanned QR code.
+- Add a clear “Scan Again” option.
+- Handle invalid/unreadable QR codes with a proper error message.
+- Handle normal text QR codes separately from URLs.
+
+2. PROFESSIONAL UI
+Make it look like a real cybersecurity project, not a basic demo.
+
+Use:
+- modern cybersecurity dashboard
+- professional dark navy/blue theme
+- clean cards
+- QR scanner section
+- risk score visualization
+- security check cards
+- decoded content section
+- “Why this score?” section
+- recommendation section
+- responsive mobile and desktop layout
+- proper loading, success and error states
+- no childish graphics or unnecessary animations.
+
+3. PROJECT QUALITY
+- Keep the existing working QR functionality.
+- Do not remove working features.
+- Do not replace real functionality with mock/demo data.
+- Fix all errors and broken buttons.
+- Make camera scanning and image upload actually work.
+- Make sure the frontend and backend communicate correctly if a backend is being used.
+- Remove unnecessary code and console errors.
+- Make the project production-ready.
+
+4. WEBSITE / DEPLOYMENT
+I need an actual working public website for my college project.
+
+Before changing deployment:
+- Inspect whether the application can run completely client-side.
+- If it can run as a static/client-side website, configure it for static deployment.
+- If a backend/server is genuinely required, configure the appropriate deployment correctly.
+- Do NOT add paid services unnecessarily.
+- Do NOT change the application's core functionality just to deploy it.
+
+Make sure:
+- npm/build commands work.
+- production build succeeds.
+- application starts without errors.
+- deployment configuration is correct.
+- the published website opens normally from a public URL.
+- camera permission works on the deployed HTTPS website.
+- upload QR functionality works on the deployed website.
+
+5. FINAL TESTING
+Test the complete flow:
+
+Open website
+→ Scan QR / Upload QR
+→ Decode QR
+→ Detect URL/text
+→ Analyze security
+→ Calculate dynamic risk score
+→ Display security result
+→ Explain reasons
+→ Scan another QR
+
+Fix every error you encounter.
+
+6. IMPORTANT
+Do NOT stop after saying “the UI is ready”.
+Do NOT only create a prototype.
+Do NOT give me instructions to finish the coding myself.
+
+I need you to actually implement, test and finalize the project.
+
+At the end, clearly tell me:
+- what was implemented
+- what was tested
+- whether production build passed
+- whether deployment is configured
+- the exact public website URL if it has been successfully published.
+
+Do not ask me to purchase a subscription unless the deployment genuinely requires it. If Replit reports that a paid subscription is required, first explain exactly which deployment/resource requires payment and whether the project can be converted to a free static deployment without losing functionality.

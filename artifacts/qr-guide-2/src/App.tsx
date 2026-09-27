@@ -33,6 +33,7 @@ type SignalKind = 'good' | 'warn' | 'bad' | 'neutral';
 type SecurityCheck = {
   label: string;
   value: string;
+  detail: string;
   kind: SignalKind;
 };
 
@@ -55,10 +56,6 @@ type RecentScan = {
   score: number;
   status: ResultStatus;
   domain: string;
-};
-
-type Detector = {
-  detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
 };
 
 const demoText = 'https://www.citylibrary.org/events/spring-reading';
@@ -87,15 +84,15 @@ function makeAnalysis(text: string, source: Analysis['source']): Analysis {
   const isUrl = /^(https?|javascript|data):/i.test(trimmed);
   const reasons: Analysis['reasons'] = [];
   const checks: SecurityCheck[] = [];
-  let score = 21;
+  let score = 18 + Math.min(12, Math.floor(trimmed.length / 32));
   let domain = 'Not applicable';
   let protocol = 'Plain text';
   let urlType = 'Plain text';
   let https = 'Not applicable';
 
   if (!isUrl) {
-    score = 36;
-    checks.push({ label: 'Payload type', value: 'Plain text', kind: 'neutral' });
+    score = Math.max(8, Math.min(34, 8 + Math.round(trimmed.length / 5)));
+    checks.push({ label: 'Payload type', value: 'Plain text', detail: 'No website opens automatically', kind: 'neutral' });
     reasons.push({
       title: 'This is text, not a web address',
       detail: 'It does not open a website automatically. Check that you recognize the text before using it.',
@@ -108,15 +105,20 @@ function makeAnalysis(text: string, source: Analysis['source']): Analysis {
       const isWebScheme = url.protocol === 'https:' || url.protocol === 'http:';
       const hasUrgencyWords = /login|verify|claim|password|wallet/i.test(trimmed);
       const isShortened = /bit\.ly|tinyurl|t\.co|goo\.gl|shorturl/i.test(host);
+      const hasAtSymbol = /@/.test(trimmed);
+      const hasUnusualCharacters = /[<>{}|\\^`\[\]]/.test(url.pathname + url.search);
+      const hasEncodedContent = /%[0-9a-f]{2}/i.test(url.pathname + url.search);
+      const redirectKeys = [...url.searchParams.keys()].filter((key) => /redirect|return|target|destination|continue|callback|^next$|^url$/i.test(key));
+      const hasRedirectPattern = redirectKeys.length > 0;
       domain = host || 'No hostname';
       protocol = url.protocol.replace(':', '').toUpperCase();
       urlType = isWebScheme ? 'Web URL' : 'Non-web scheme';
       https = url.protocol === 'https:' ? 'Present' : 'Missing';
-      checks.push({ label: 'Payload type', value: urlType, kind: isWebScheme ? 'neutral' : 'bad' });
+      checks.push({ label: 'Payload type', value: urlType, detail: isWebScheme ? 'Standard browser destination' : 'Not a standard website', kind: isWebScheme ? 'neutral' : 'bad' });
 
       if (url.protocol === 'javascript:' || url.protocol === 'data:') {
         score = 88;
-        checks.push({ label: 'Connection', value: 'Non-web scheme', kind: 'bad' });
+        checks.push({ label: 'Connection', value: 'Non-web scheme', detail: 'Does not use HTTP or HTTPS', kind: 'bad' });
         reasons.push({
           title: 'This is not a normal website link',
           detail: 'It uses a browser or data scheme instead of a standard web address. Do not open it unless you know exactly why it is there.',
@@ -124,7 +126,7 @@ function makeAnalysis(text: string, source: Analysis['source']): Analysis {
         });
       } else if (url.protocol === 'https:') {
         score -= 9;
-        checks.push({ label: 'Connection', value: 'HTTPS encrypted', kind: 'good' });
+        checks.push({ label: 'Connection', value: 'HTTPS encrypted', detail: 'The connection uses encryption', kind: 'good' });
         reasons.push({
           title: 'The connection is encrypted',
           detail: 'This link uses HTTPS, which helps protect the connection while it travels.',
@@ -132,7 +134,7 @@ function makeAnalysis(text: string, source: Analysis['source']): Analysis {
         });
       } else {
         score += 24;
-        checks.push({ label: 'Connection', value: 'HTTP not encrypted', kind: 'warn' });
+        checks.push({ label: 'Connection', value: 'HTTP not encrypted', detail: 'The connection is not encrypted', kind: 'warn' });
         reasons.push({
           title: 'The link is not encrypted',
           detail: 'It uses HTTP instead of HTTPS. Avoid sharing private information on this site.',
@@ -142,7 +144,7 @@ function makeAnalysis(text: string, source: Analysis['source']): Analysis {
 
       if (host.endsWith('.example') || host === 'citylibrary.org' || host.endsWith('.citylibrary.org')) {
         score -= 6;
-        checks.push({ label: 'Domain structure', value: 'Clear and familiar', kind: 'good' });
+        checks.push({ label: 'Domain structure', value: 'Clear and familiar', detail: 'Readable domain pattern found', kind: 'good' });
         reasons.push({
           title: 'The address looks familiar',
           detail: 'The web address has a clear, readable domain rather than a disguised short link.',
@@ -150,14 +152,14 @@ function makeAnalysis(text: string, source: Analysis['source']): Analysis {
         });
       } else if (isShortened) {
         score += 25;
-        checks.push({ label: 'Domain structure', value: 'Shortened destination', kind: 'warn' });
+        checks.push({ label: 'Domain structure', value: 'Shortened destination', detail: 'The final destination is hidden', kind: 'warn' });
         reasons.push({
           title: 'The link is shortened',
           detail: 'Short links hide their destination. Take a moment to check where they lead before opening.',
           kind: 'warn',
         });
       } else {
-        checks.push({ label: 'Domain structure', value: 'Readable; review it', kind: 'neutral' });
+        checks.push({ label: 'Domain structure', value: 'Readable; review it', detail: 'No trusted-domain match was assumed', kind: 'neutral' });
         reasons.push({
           title: 'The destination is ready to review',
           detail: 'Look at the domain carefully and make sure it is the organization you expect.',
@@ -165,29 +167,98 @@ function makeAnalysis(text: string, source: Analysis['source']): Analysis {
         });
       }
 
-      if (url.username || /@/.test(url.hostname) || hasUrgencyWords) {
-        score += 28;
-        checks.push({ label: 'Pressure signals', value: 'Needs extra attention', kind: 'bad' });
+      if (hasAtSymbol) {
+        score += 15;
+        checks.push({ label: '@ symbol', value: 'Present in the URL', detail: 'May obscure who owns the destination', kind: 'bad' });
+        reasons.push({
+          title: 'The URL contains an @ symbol',
+          detail: 'An @ symbol can make a long address look like it belongs to one domain while sending you somewhere else.',
+          kind: 'bad',
+        });
+      } else {
+        checks.push({ label: '@ symbol', value: 'Not found', detail: 'No embedded address marker detected', kind: 'good' });
+      }
+
+      if (hasUrgencyWords) {
+        score += 18;
+        checks.push({ label: 'Pressure signals', value: 'Needs extra attention', detail: 'Urgency-related terms found', kind: 'bad' });
         reasons.push({
           title: 'This link asks for extra attention',
           detail: 'Some words in the address can be used to create urgency or imitate a sign-in page.',
           kind: 'bad',
         });
       } else {
-        checks.push({ label: 'Pressure signals', value: 'No common terms found', kind: 'good' });
+        checks.push({ label: 'Pressure signals', value: 'No common terms found', detail: 'No common urgency terms detected', kind: 'good' });
         reasons.push({
           title: 'No urgent request found',
           detail: 'We did not see common pressure words that often try to rush people into a decision.',
           kind: 'good',
         });
       }
+
+      if (trimmed.length > 200) {
+        score += 18;
+        checks.push({ label: 'URL length', value: `${trimmed.length} characters`, detail: 'Long addresses deserve closer review', kind: 'bad' });
+        reasons.push({
+          title: 'The URL is unusually long',
+          detail: 'Long addresses can contain hidden tracking or redirect information. Review the full destination carefully.',
+          kind: 'bad',
+        });
+      } else if (trimmed.length > 120) {
+        score += 9;
+        checks.push({ label: 'URL length', value: `${trimmed.length} characters`, detail: 'Longer than a typical short link', kind: 'warn' });
+        reasons.push({
+          title: 'The URL is longer than usual',
+          detail: 'A longer address is not automatically unsafe, but it gives you more details to verify before opening.',
+          kind: 'warn',
+        });
+      } else {
+        score -= 2;
+        checks.push({ label: 'URL length', value: `${trimmed.length} characters`, detail: 'No unusual length detected', kind: 'good' });
+      }
+
+      if (hasUnusualCharacters) {
+        score += 16;
+        checks.push({ label: 'Unusual characters', value: 'Found in the address', detail: 'Special characters need review', kind: 'bad' });
+        reasons.push({
+          title: 'The address contains unusual characters',
+          detail: 'Special characters in the path or query can make a destination harder to recognize. Review it without opening it first.',
+          kind: 'bad',
+        });
+      } else {
+        checks.push({ label: 'Unusual characters', value: 'None detected', detail: 'No high-risk special characters found', kind: 'good' });
+      }
+
+      if (hasEncodedContent) {
+        score += 8;
+        checks.push({ label: 'Encoded content', value: 'Present in the address', detail: 'Part of the destination is encoded', kind: 'warn' });
+        reasons.push({
+          title: 'The URL contains encoded content',
+          detail: 'Encoded characters can be normal, but they make the destination harder to inspect at a glance.',
+          kind: 'warn',
+        });
+      } else {
+        checks.push({ label: 'Encoded content', value: 'None detected', detail: 'No percent-encoded path or query found', kind: 'good' });
+      }
+
+      if (hasRedirectPattern) {
+        score += 14;
+        checks.push({ label: 'Redirect pattern', value: `Found: ${redirectKeys[0]}`, detail: 'The URL may forward to another destination', kind: 'warn' });
+        reasons.push({
+          title: 'The URL includes a redirect-style parameter',
+          detail: 'Parameters such as redirect, next, or target can forward you somewhere else. Verify the final destination independently.',
+          kind: 'warn',
+        });
+      } else {
+        checks.push({ label: 'Redirect pattern', value: 'Not detected', detail: 'No common forwarding parameter found', kind: 'good' });
+      }
     } catch {
       score = 48;
       protocol = 'Unclear';
       urlType = 'Unusual web address';
       https = 'Unknown';
-      checks.push({ label: 'Payload type', value: 'Web address', kind: 'warn' });
-      checks.push({ label: 'Domain structure', value: 'Hard to verify', kind: 'warn' });
+      checks.push({ label: 'Payload type', value: 'Web address', detail: 'Looks like a link but could not be parsed', kind: 'warn' });
+      checks.push({ label: 'Domain structure', value: 'Hard to verify', detail: 'The address format is unusual', kind: 'warn' });
       reasons.push({
         title: 'The address is unusual',
         detail: 'This text looks like a web link, but its structure is difficult to verify safely.',
@@ -417,7 +488,7 @@ function ResultView({ analysis, recentScans, onReset }: { analysis: Analysis; re
               {analysis.checks.map((check, index) => (
                 <div className="check-item" key={`${check.label}-${index}`} data-testid={`check-${index}`}>
                   <div className={`check-icon ${check.kind}`}><SignalIcon kind={check.kind} /></div>
-                  <div><strong>{check.label}</strong><span>{check.value}</span></div>
+                  <div><strong>{check.label}</strong><span>{check.value} · {check.detail}</span></div>
                 </div>
               ))}
             </div>
